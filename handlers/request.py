@@ -27,7 +27,7 @@ async def status_handler(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         f"Got it!\n\n"
-        f"Account status: {status.title()}\n\n"
+        f"Your account status: {status.title()}\n\n"
         "Now select the reason:",
         reply_markup=reason_keyboard()
     )
@@ -63,6 +63,7 @@ async def username_handler(message: Message, state: FSMContext):
     )
 
     await state.set_state(AccountForm.screenshot)
+
 
 @router.message(AccountForm.screenshot, F.photo)
 async def screenshot_handler(message: Message, state: FSMContext):
@@ -103,7 +104,36 @@ async def email_handler(message: Message, state: FSMContext):
         "Please wait a few minutes. An administrator will review it."
     )
 
-    # Temporary admin message (admin ID later config se lenge)
-    print(data)
+    admin_text = f"""
+🚨 NEW REQUEST
+
+👤 Telegram:
+Name: {message.from_user.full_name}
+Username: @{message.from_user.username}
+ID: {message.from_user.id}
+
+📱 Instagram:
+{data.get('instagram_username')}
+
+📌 Status:
+{data.get('status')}
+
+📌 Reason:
+{data.get('reason')}
+
+📧 Email:
+{data.get('email')}
+"""
+
+    await message.bot.send_message(
+        ADMIN_ID,
+        admin_text
+    )
+
+    await message.bot.send_photo(
+        ADMIN_ID,
+        photo=data.get("screenshot"),
+        caption="📷 Account Screenshot"
+    )
 
     await state.clear()
