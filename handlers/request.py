@@ -1,56 +1,131 @@
-import sqlite3
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+
+from keyboards.inline import account_status_keyboard, reason_keyboard
+from states.form import AccountForm
+from config import ADMIN_ID
+from database import save_request
+
+router = Router()
 
 
-def connect():
-    return sqlite3.connect("bot.db")
-
-
-def create_tables():
-
-    db = connect()
-    cursor = db.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        telegram_username TEXT,
-        instagram_username TEXT,
-        status TEXT,
-        reason TEXT,
-        email TEXT
+@router.callback_query(F.data == "continue")
+async def continue_handler(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "📌 Select your account status:",
+        reply_markup=account_status_keyboard()
     )
-    """)
-
-    db.commit()
-    db.close()
 
 
-def save_request(data):
+@router.callback_query(F.data.startswith("status_"))
+async def status_handler(callback: CallbackQuery, state: FSMContext):
+    status = callback.data.replace("status_", "")
 
-    db = connect()
-    cursor = db.cursor()
+    await state.update_data(status=status)
 
-    cursor.execute("""
-    INSERT INTO requests
-    (
-    user_id,
-    telegram_username,
-    instagram_username,
-    status,
-    reason,
-    email
+    await callback.message.edit_text(
+        f"Got it!\n\n"
+        f"Your account status: {status.title()}\n\n"
+        "Now select the reason:",
+        reply_markup=reason_keyboard()
     )
-    VALUES (?, ?, ?, ?, ?, ?)
-    """,
-    (
-        data["user_id"],
-        data["telegram_username"],
-        data["instagram_username"],
-        data["status"],
-        data["reason"],
-        data["email"]
-    ))
 
-    db.commit()
-    db.close()
+
+@router.callback_query(F.data.startswith("reason_"))
+async def reason_handler(callback: CallbackQuery, state: FSMContext):
+    reason = callback.data.replace("reason_", "")
+
+    await state.update_data(reason=reason)
+
+    await callback.message.edit_text(
+        "✅ Got it!\n\nPlease send your Instagram username."
+    )
+
+    await state.set_state(AccountForm.username)
+
+
+@router.message(AccountForm.username)
+async def username_handler(message: Message, state: FSMContext):
+    await state.update_data(instagram_username=message.text)
+
+    await message.answer(
+        "📷 Please send your screenshot:\n\n"
+        "• Suspension Screenshot\n"
+        "• Read More Screenshot\n"
+        "• Login Page Screenshot"
+    )
+
+    await state.set_state(AccountForm.screenshot)
+
+
+@router.message(AccountForm.screenshot, F.photo)
+async def screenshot_handler(message: Message, state: FSMContext):
+    photo_id = message.photo[-1].file_id
+
+    await state.update_data(screenshot=photo_id)
+
+    await message.answer(
+        "📧 Please send your connected email."
+    )
+
+    await state.set_state(AccountForm.email)
+
+
+@router.message(AccountForm.screenshot)
+async def screenshot_text_handler(message: Message):
+    await message.answer("⚠️ Please send a screenshot image.")
+
+
+@router.message(AccountForm.email)
+async def email_handler(message: Message, state: FSMContext):
+    await state.update_data(email=message.text)
+
+    data = await state.get_data()
+
+    save_request({
+        "user_id": message.from_user.id,
+        "telegram_username": message.from_user.username or "",
+        "instagram_username": data.get("instagram_username"),
+        "status": data.get("status"),
+        "reason": data.get("reason"),
+        "email": data.get("email")
+    })
+
+    admin_text = f"""
+🚨 NEW REQUEST
+
+👤 Telegram
+Name: {message.from_user.full_name}
+Username: @{message.from_user.username}
+ID: {message.from_user.id}
+
+📱 Instagram
+{data.get('instagram_username')}
+
+📌 Status
+{data.get('status')}
+
+📌 Reason
+{data.get('reason')}
+
+📧 Email
+{data.get('email')}
+"""
+
+    await message.bot.send_message(
+        ADMIN_ID,
+        admin_text
+    )
+
+    await message.bot.send_photo(
+        ADMIN_ID,
+        photo=data.get("screenshot"),
+        caption="📷 Account Screenshot"
+    )
+
+    await message.answer(
+        "✅ All Done!\n\nPlease wait a few minutes while an administrator reviews your request."
+    )
+
+    await state.clear()
