@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher
 
 from config import BOT_TOKEN
 from handlers.start import router as start_router
+from handlers.request import router as request_router
 
 
 async def main():
@@ -12,6 +13,7 @@ async def main():
     dp = Dispatcher()
 
     dp.include_router(start_router)
+    dp.include_router(request_router)
 
     print("Bot Started Successfully")
 
