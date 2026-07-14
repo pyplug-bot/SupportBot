@@ -5,9 +5,12 @@ from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from handlers.start import router as start_router
 from handlers.request import router as request_router
+from database import create_tables
 
 
 async def main():
+    create_tables()
+
     bot = Bot(token=BOT_TOKEN)
 
     dp = Dispatcher()
@@ -15,7 +18,7 @@ async def main():
     dp.include_router(start_router)
     dp.include_router(request_router)
 
-    print("Bot Started Successfully")
+    print("✅ Bot Started Successfully")
 
     await dp.start_polling(bot)
 
